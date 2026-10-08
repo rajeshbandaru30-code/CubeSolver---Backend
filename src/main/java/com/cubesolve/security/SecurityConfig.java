@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -19,7 +21,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -28,8 +32,8 @@ import java.util.stream.Collectors;
 /**
  * Spring Security configuration.
  * - Stateless (JWT-based, no sessions)
- * - CORS configured with explicit allowed origins & headers
- * - Public endpoints: /api/auth/**, /api/cube/**
+ * - Highest-precedence CorsFilter bean ensuring CORS headers are added BEFORE security or exceptions block requests
+ * - Public endpoints: /api/auth/**, /api/cube/**, /api/health
  * - Protected: /api/solves/** (requires JWT)
  */
 @Configuration
@@ -94,7 +98,13 @@ public class SecurityConfig {
                 .map(String::trim)
                 .map(s -> s.replaceAll("/+$", ""))
                 .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        // Always guarantee production frontend URL is present
+        if (!origins.contains("https://cube-solver-front-end.vercel.app")) {
+            origins.add("https://cube-solver-front-end.vercel.app");
+        }
+
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
@@ -105,5 +115,17 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    /**
+     * Registers CorsFilter with HIGHEST_PRECEDENCE so CORS headers are attached
+     * BEFORE Spring Security, filters, or error handlers process the request.
+     */
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistrationBean() {
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(
+                new CorsFilter(corsConfigurationSource()));
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return bean;
     }
 }
