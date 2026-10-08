@@ -35,17 +35,21 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.existsByUsername(request.getUsername())) {
-            return AuthResponse.error("Username '" + request.getUsername() + "' is already taken.");
+        String username = request.getUsername() != null ? request.getUsername().trim() : "";
+        String email = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        String password = request.getPassword() != null ? request.getPassword() : "";
+
+        if (userRepository.existsByUsernameIgnoreCase(username) || userRepository.existsByUsername(username)) {
+            return AuthResponse.error("Username '" + username + "' is already taken.");
         }
-        if (userRepository.existsByEmail(request.getEmail())) {
-            return AuthResponse.error("Email '" + request.getEmail() + "' is already registered.");
+        if (userRepository.existsByEmailIgnoreCase(email) || userRepository.existsByEmail(email)) {
+            return AuthResponse.error("Email '" + email + "' is already registered.");
         }
 
         User user = new User(
-            request.getUsername(),
-            passwordEncoder.encode(request.getPassword()),
-            request.getEmail()
+            username,
+            passwordEncoder.encode(password),
+            email
         );
         userRepository.save(user);
 
@@ -57,10 +61,13 @@ public class AuthService {
      * Authenticates a user and returns a JWT token.
      */
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByUsername(request.getUsername())
-            .orElse(null);
+        String username = request.getUsername() != null ? request.getUsername().trim() : "";
+        String password = request.getPassword() != null ? request.getPassword() : "";
 
-        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        User user = userRepository.findByUsernameIgnoreCase(username)
+            .orElseGet(() -> userRepository.findByUsername(username).orElse(null));
+
+        if (user == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
             return AuthResponse.error("Invalid username or password.");
         }
 

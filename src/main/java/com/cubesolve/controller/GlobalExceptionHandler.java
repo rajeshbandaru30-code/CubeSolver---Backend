@@ -64,6 +64,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles database unique constraint or integrity violations cleanly.
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex) {
+        log.warn("Database constraint violation: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+            "success", false,
+            "message", "Username or email is already registered."
+        ));
+    }
+
+    /**
      * Catch-all for unexpected server exceptions.
      * Prevents stack traces from being exposed to clients.
      */
