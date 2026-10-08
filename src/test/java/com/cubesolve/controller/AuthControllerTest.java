@@ -16,6 +16,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -268,5 +269,17 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(login)))
             .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("OPTIONS /api/auth/register - preflight request returns 200 with CORS headers")
+    void preflightRegisterCors() throws Exception {
+        mockMvc.perform(options("/api/auth/register")
+                .header("Origin", "https://cube-solver-front-end.vercel.app")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "Content-Type,Authorization"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Access-Control-Allow-Origin", "https://cube-solver-front-end.vercel.app"));
     }
 }
