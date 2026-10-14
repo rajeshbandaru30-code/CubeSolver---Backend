@@ -55,16 +55,21 @@ public class CubeService {
     /**
      * Solves the cube described in the request, optionally saves to DB if user present,
      * and returns the solution.
+     * Note: This method is intentionally NOT marked @Transactional so the CPU-bound Kociemba
+     * search does not hold a database connection from HikariCP checked out for the entire solve duration.
      */
-    @Transactional
     public SolveResponse solve(SolveRequest request, User user) {
+        long tReqStart = System.currentTimeMillis();
         if (request == null || request.getFacelets() == null) {
             throw new IllegalArgumentException("Facelets array must not be null.");
         }
 
         // 1. Validate cube state
+        long tValStart = System.currentTimeMillis();
         CubeState cube = new CubeState(request.getFacelets());
         CubeValidator.ValidationResult validationResult = CubeValidator.validate(cube);
+        long tVal = System.currentTimeMillis() - tValStart;
+
         if (!validationResult.isValid()) {
             String errorMsg = String.join("; ", validationResult.getErrors());
             log.warn("Invalid cube state submitted to solve: {}", errorMsg);
@@ -73,17 +78,15 @@ public class CubeService {
 
         // 2. Check if already solved
         if (cube.isSolved()) {
-            log.info("Cube is already solved.");
+            log.info("Cube is already solved in {}ms.", System.currentTimeMillis() - tReqStart);
             return SolveResponse.alreadySolved();
         }
 
-        // 3. Solve using Kociemba algorithm
+        // 3. Solve using Kociemba algorithm (in-memory CPU computation)
         long startTime = System.currentTimeMillis();
         String solutionMoves;
         try {
-            log.info("Starting Kociemba solver...");
             solutionMoves = solver.solve(cube);
-            log.info("Solver finished. Solution: {}", solutionMoves);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -93,7 +96,10 @@ public class CubeService {
         long solveTimeMs = System.currentTimeMillis() - startTime;
 
         // 4. Verify solution correctness
+        long tVerStart = System.currentTimeMillis();
         CubeState verified = CubeMoves.applyMoves(cube, solutionMoves);
+        long tVer = System.currentTimeMillis() - tVerStart;
+
         if (!verified.isSolved()) {
             log.error("SOLVER BUG: Solution '{}' did not solve the cube!", solutionMoves);
             throw new IllegalStateException("Internal solver error: solution verification failed.");
@@ -105,26 +111,40 @@ public class CubeService {
             : Arrays.asList(solutionMoves.trim().split("\\s+"));
         int moveCount = moveList.size();
 
-        // 6. Save to database if repository available
-        Long recordId = null;
-        if (solveRecordRepository != null) {
-            try {
-                SolveRecord record = new SolveRecord();
-                record.setCubeState(cube.toStorageString());
-                record.setScrambleMoves(request.getScrambleMoves());
-                record.setSolutionMoves(solutionMoves);
-                record.setMoveCount(moveCount);
-                record.setSolveTimeMs(solveTimeMs);
-                record.setUser(user);
-                record = solveRecordRepository.save(record);
-                recordId = record.getId();
-                log.info("Saved solve record id={}, moves={}, time={}ms", recordId, moveCount, solveTimeMs);
-            } catch (Exception e) {
-                log.warn("Failed to persist solve record: {}", e.getMessage());
-            }
-        }
+        // 6. Save to database if repository available (isolated quick transaction)
+        long tDbStart = System.currentTimeMillis();
+        Long recordId = persistSolveRecord(cube, request.getScrambleMoves(), solutionMoves, moveCount, solveTimeMs, user);
+        long tDb = System.currentTimeMillis() - tDbStart;
+
+        long totalMs = System.currentTimeMillis() - tReqStart;
+        log.info("Solve request completed in {}ms [val: {}ms, engine: {}ms, verify: {}ms, db: {}ms, moves: {}]",
+                totalMs, tVal, solveTimeMs, tVer, tDb, moveCount);
 
         return SolveResponse.success(solutionMoves, moveList, moveCount, solveTimeMs, recordId);
+    }
+
+    /**
+     * Isolated, bounded transaction to persist solve record without holding
+     * a connection during the CPU solver phase.
+     */
+    @Transactional
+    public Long persistSolveRecord(CubeState cube, String scrambleMoves, String solutionMoves,
+                                   int moveCount, long solveTimeMs, User user) {
+        if (solveRecordRepository == null) return null;
+        try {
+            SolveRecord record = new SolveRecord();
+            record.setCubeState(cube.toStorageString());
+            record.setScrambleMoves(scrambleMoves);
+            record.setSolutionMoves(solutionMoves);
+            record.setMoveCount(moveCount);
+            record.setSolveTimeMs(solveTimeMs);
+            record.setUser(user);
+            record = solveRecordRepository.save(record);
+            return record.getId();
+        } catch (Exception e) {
+            log.warn("Failed to persist solve record: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

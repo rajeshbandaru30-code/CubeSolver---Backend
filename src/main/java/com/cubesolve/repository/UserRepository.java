@@ -17,4 +17,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmailIgnoreCase(String email);
     boolean existsByUsernameIgnoreCase(String username);
     boolean existsByEmailIgnoreCase(String email);
+
+    /**
+     * Single query conflict check for registration.
+     * Replaces 4 sequential database queries with a single indexed query.
+     */
+    Optional<User> findFirstByUsernameIgnoreCaseOrEmailIgnoreCase(String username, String email);
 }

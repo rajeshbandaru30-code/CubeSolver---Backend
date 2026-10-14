@@ -84,18 +84,33 @@ public class SolveHistoryService {
         return toDto(saved);
     }
 
-    /** Get user dashboard statistics computed directly from MySQL. */
+    /** Get user dashboard statistics computed directly from MySQL via SQL aggregation. */
     @Transactional(readOnly = true)
     public UserStatsDto getUserStats(User user) {
         if (user == null) {
             throw new IllegalArgumentException("User cannot be null.");
         }
-        List<SolveRecord> solves = solveRecordRepository.findByUserOrderByCreatedAtDesc(user);
-        long totalSolves = solves.size();
-        Long bestTimeMs = solves.isEmpty() ? null : solves.stream().mapToLong(SolveRecord::getSolveTimeMs).min().orElse(0L);
-        Double averageTimeMs = solves.isEmpty() ? null : Math.round(solves.stream().mapToLong(SolveRecord::getSolveTimeMs).average().orElse(0.0) * 10.0) / 10.0;
-        Integer bestMoveCount = solves.isEmpty() ? null : solves.stream().mapToInt(SolveRecord::getMoveCount).min().orElse(0);
-        List<SolveRecordDto> recentSolves = solves.stream().limit(5).map(this::toDto).collect(Collectors.toList());
+
+        List<Object[]> statsList = solveRecordRepository.getUserStatsAggregated(user);
+        long totalSolves = 0;
+        Long bestTimeMs = null;
+        Double averageTimeMs = null;
+        Integer bestMoveCount = null;
+
+        if (statsList != null && !statsList.isEmpty() && statsList.get(0) != null) {
+            Object[] row = statsList.get(0);
+            totalSolves = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+            if (totalSolves > 0) {
+                bestTimeMs = row[1] != null ? ((Number) row[1]).longValue() : null;
+                averageTimeMs = row[2] != null ? Math.round(((Number) row[2]).doubleValue() * 10.0) / 10.0 : null;
+                bestMoveCount = row[3] != null ? ((Number) row[3]).intValue() : null;
+            }
+        }
+
+        List<SolveRecordDto> recentSolves = solveRecordRepository.findTop5ByUserOrderByCreatedAtDesc(user)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
 
         return new UserStatsDto(totalSolves, bestTimeMs, averageTimeMs, bestMoveCount, recentSolves);
     }

@@ -42,8 +42,12 @@ public class CubeController {
     public ResponseEntity<SolveResponse> solve(
             @Valid @RequestBody SolveRequest request,
             @AuthenticationPrincipal User user) {
+        long t0 = System.currentTimeMillis();
         SolveResponse response = cubeService.solve(request, user);
-        return ResponseEntity.ok(response);
+        long dur = System.currentTimeMillis() - t0;
+        return ResponseEntity.ok()
+            .header("Server-Timing", "app;dur=" + dur + ", engine;dur=" + response.getSolveTimeMs() + ";desc=\"Kociemba Engine\"")
+            .body(response);
     }
 
     /**

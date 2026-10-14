@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
  * JPA entity representing one solve attempt stored in the database.
  */
 @Entity
-@Table(name = "solve_records")
+@Table(name = "solve_records", indexes = {
+    @Index(name = "idx_solves_user_created", columnList = "user_id, created_at")
+})
 public class SolveRecord {
 
     @Id

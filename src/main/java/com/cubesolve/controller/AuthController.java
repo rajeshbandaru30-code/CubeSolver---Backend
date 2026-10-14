@@ -26,25 +26,33 @@ public class AuthController {
 
     /**
      * POST /api/auth/register
-     * Registers a new user. Returns a JWT token on success.
+     * Registers a new user. Returns a JWT token on success with Server-Timing header.
      */
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        long t0 = System.currentTimeMillis();
         AuthResponse response = authService.register(request);
-        return response.isSuccess()
-            ? ResponseEntity.ok(response)
-            : ResponseEntity.badRequest().body(response);
+        long dur = System.currentTimeMillis() - t0;
+        return (response.isSuccess()
+            ? ResponseEntity.ok()
+            : ResponseEntity.badRequest())
+            .header("Server-Timing", "app;dur=" + dur + ";desc=\"Registration Processing\"")
+            .body(response);
     }
 
     /**
      * POST /api/auth/login
-     * Authenticates a user. Returns a JWT token on success.
+     * Authenticates a user. Returns a JWT token on success with Server-Timing header.
      */
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        long t0 = System.currentTimeMillis();
         AuthResponse response = authService.login(request);
-        return response.isSuccess()
-            ? ResponseEntity.ok(response)
-            : ResponseEntity.status(401).body(response);
+        long dur = System.currentTimeMillis() - t0;
+        return (response.isSuccess()
+            ? ResponseEntity.ok()
+            : ResponseEntity.status(401))
+            .header("Server-Timing", "app;dur=" + dur + ";desc=\"Login Processing\"")
+            .body(response);
     }
 }
