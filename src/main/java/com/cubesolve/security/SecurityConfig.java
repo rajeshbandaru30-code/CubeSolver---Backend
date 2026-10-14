@@ -105,9 +105,18 @@ public class SecurityConfig {
             origins.add("https://cube-solver-front-end.vercel.app");
         }
 
-        config.setAllowedOrigins(origins);
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
+        // Support allowed origin patterns (covers Vercel production, preview deployments, and localhost)
+        List<String> originPatterns = new ArrayList<>(origins);
+        if (!originPatterns.contains("https://*.vercel.app")) {
+            originPatterns.add("https://*.vercel.app");
+        }
+        if (!originPatterns.contains("http://localhost:*")) {
+            originPatterns.add("http://localhost:*");
+        }
+        config.setAllowedOriginPatterns(originPatterns);
+
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"));
+        config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization", "Content-Type", "Server-Timing"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
